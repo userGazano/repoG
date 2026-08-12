@@ -343,11 +343,9 @@ async def get_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
     acc = db.get_account_by_id(account_id)
     phone = acc.get('phone_number') if acc else ''
     
-    # Сначала проверяем базу (куда Telethon сохраняет пойманные коды)
     code_record = db.get_captured_code(account_id)
     code = code_record.get('code') if code_record else None
     
-    # Если в базе нет, пробуем дернуть менеджер напрямую
     if not code:
         mgr = telegram_account_handler.account_manager
         code_data = mgr.get_code(account_id) if mgr else None
