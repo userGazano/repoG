@@ -2,7 +2,7 @@ import os
 import re
 import logging
 from telethon import TelegramClient, events
-from config import API_ID, API_HASH
+from config import TELEGRAM_API_ID as API_ID, TELEGRAM_API_HASH as API_HASH
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +69,6 @@ class AccountManager:
     async def verify_code(self, phone: str, code: str):
         for acc_id, client in list(self.clients.items()):
             try:
-                # Ищем сессию по номеру телефона среди подключенных
                 await client.sign_in(phone=phone, code=code)
                 self._register_handlers(client, acc_id)
                 me = await client.get_me()
