@@ -18,12 +18,7 @@ class Database:
             with self.get_connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute("""
-                        DROP TABLE IF EXISTS captured_codes CASCADE;
-                        DROP TABLE IF EXISTS transactions CASCADE;
-                        DROP TABLE IF EXISTS accounts CASCADE;
-                        DROP TABLE IF EXISTS users CASCADE;
-
-                        CREATE TABLE users (
+                        CREATE TABLE IF NOT EXISTS users (
                             user_id BIGINT PRIMARY KEY,
                             username VARCHAR(255),
                             first_name VARCHAR(255),
@@ -31,7 +26,7 @@ class Database:
                             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                         );
 
-                        CREATE TABLE accounts (
+                        CREATE TABLE IF NOT EXISTS accounts (
                             id SERIAL PRIMARY KEY,
                             phone_number VARCHAR(50),
                             country VARCHAR(10),
@@ -44,7 +39,7 @@ class Database:
                             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                         );
 
-                        CREATE TABLE captured_codes (
+                        CREATE TABLE IF NOT EXISTS captured_codes (
                             id SERIAL PRIMARY KEY,
                             account_id INT,
                             code VARCHAR(20),
@@ -54,7 +49,7 @@ class Database:
                             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                         );
 
-                        CREATE TABLE transactions (
+                        CREATE TABLE IF NOT EXISTS transactions (
                             id SERIAL PRIMARY KEY,
                             user_id BIGINT,
                             account_id INT,
@@ -63,7 +58,7 @@ class Database:
                         );
                     """)
                     conn.commit()
-            logger.info("✅ База данных успешно пересоздана и инициализирована!")
+            logger.info("✅ База данных успешно инициализирована!")
         except Exception as e:
             logger.error(f"❌ Ошибка инициализации БД: {e}")
 
@@ -151,6 +146,20 @@ class Database:
                     conn.commit()
         except Exception as e:
             logger.error(f"Ошибка смены статуса аккаунта: {e}")
+
+    def update_account_auth(self, account_id: int, first_name: str = None, username: str = None):
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        UPDATE accounts 
+                        SET first_name = COALESCE(%s, first_name), 
+                            username = COALESCE(%s, username)
+                        WHERE id = %s;
+                    """, (first_name, username, account_id))
+                    conn.commit()
+        except Exception as e:
+            logger.error(f"Ошибка обновления данных аккаунта #{account_id}: {e}")
 
     def log_transaction(self, user_id: int, account_id: int, amount: float):
         try:
