@@ -27,13 +27,26 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user.id in ADMIN_IDS:
         keyboard.append([InlineKeyboardButton("⚙️ Админ-панель", callback_data='admin_panel')])
     
-    await update.message.reply_text("🎯 <b>Магазин Telegram Аккаунтов</b>", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+    if update.callback_query:
+        await update.callback_query.answer()
+        await update.callback_query.edit_message_text(
+            "🎯 <b>Магазин Telegram Аккаунтов</b>", 
+            reply_markup=InlineKeyboardMarkup(keyboard), 
+            parse_mode='HTML'
+        )
+    else:
+        await update.message.reply_text(
+            "🎯 <b>Магазин Telegram Аккаунтов</b>", 
+            reply_markup=InlineKeyboardMarkup(keyboard), 
+            parse_mode='HTML'
+        )
 
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    await query.answer()
+    
     if query.from_user.id not in ADMIN_IDS:
         return
-    await query.answer()
     
     keyboard = [
         [InlineKeyboardButton("➕ Добавить аккаунт", callback_data='add_account_request_phone')],
@@ -41,6 +54,21 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("◀️ Главное меню", callback_data='back_to_main')]
     ]
     await query.edit_message_text("⚙️ <b>Панель администратора</b>", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+
+async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    s = db.get_stats()
+    text = (
+        f"📊 <b>Статистика магазина:</b>\n\n"
+        f"📦 Всего аккаунтов: {s['total']}\n"
+        f"✅ Доступно: {s['available']}\n"
+        f"💰 Продано: {s['sold']}\n"
+        f"💵 Выручка: ${s['revenue']:.2f}"
+    )
+    keyboard = [[InlineKeyboardButton("◀️ В админ-панель", callback_data='admin_panel')]]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
 
 async def add_account_request_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -178,17 +206,15 @@ async def get_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
 
-def main():
+async def post_init(application: Application):
     db.init_db()
-    
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(init_account_manager(db))
-    
-    app = Application.builder().token(BOT_TOKEN).build()
+    await init_account_manager(db)
+
+def main():
+    app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
     
     add_account_conv = ConversationHandler(
-        entry_points=[CallbackQueryHandler(add_account_request_phone, pattern='add_account_request_phone')],
+        entry_points=[CallbackQueryHandler(add_account_request_phone, pattern='^add_account_request_phone$')],
         states={
             ADMIN_ADD_PHONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_phone)],
             ADMIN_ADD_CODE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_code)],
@@ -201,11 +227,12 @@ def main():
     
     app.add_handler(CommandHandler('start', start))
     app.add_handler(add_account_conv)
-    app.add_handler(CallbackQueryHandler(admin_panel, pattern='admin_panel'))
-    app.add_handler(CallbackQueryHandler(catalog, pattern='catalog'))
-    app.add_handler(CallbackQueryHandler(buy_account, pattern='buy_'))
-    app.add_handler(CallbackQueryHandler(get_code, pattern='get_code_'))
-    app.add_handler(CallbackQueryHandler(start, pattern='back_to_main'))
+    app.add_handler(CallbackQueryHandler(admin_panel, pattern='^admin_panel$'))
+    app.add_handler(CallbackQueryHandler(stats, pattern='^stats$'))
+    app.add_handler(CallbackQueryHandler(catalog, pattern='^catalog$'))
+    app.add_handler(CallbackQueryHandler(buy_account, pattern='^buy_'))
+    app.add_handler(CallbackQueryHandler(get_code, pattern='^get_code_'))
+    app.add_handler(CallbackQueryHandler(start, pattern='^back_to_main$'))
     
     logger.info("🚀 Бот запущен!")
     app.run_polling()
