@@ -75,11 +75,60 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     keyboard = [
         [InlineKeyboardButton("➕ Добавить аккаунт", callback_data='add_account_request_phone')],
+        [InlineKeyboardButton("🎁 Выдать аккаунт себе", callback_data='admin_claim_list')],
         [InlineKeyboardButton("📂 Управление аккаунтами", callback_data='manage_accounts')],
         [InlineKeyboardButton("📊 Статистика", callback_data='stats')],
         [InlineKeyboardButton("◀️ Главное меню", callback_data='back_to_main')]
     ]
     await query.edit_message_text("⚙️ <b>Панель администратора</b>", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+
+async def admin_claim_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    if query.from_user.id not in ADMIN_IDS:
+        return
+        
+    accounts = db.get_available_accounts()
+    if not accounts:
+        keyboard = [[InlineKeyboardButton("◀️ В админ-панель", callback_data='admin_panel')]]
+        await query.edit_message_text("📭 Нет доступных аккаунтов для выдачи.", reply_markup=InlineKeyboardMarkup(keyboard))
+        return
+
+    text = "🎁 <b>Выберите аккаунт, который хотите забрать себе:</b>\n\n"
+    keyboard = []
+    for acc in accounts[:10]:
+        phone = acc.get('phone_number') or 'Без номера'
+        acc_id = acc.get('id', 0)
+        keyboard.append([InlineKeyboardButton(f"📱 Забрать {phone}", callback_data=f"claim_acc_{acc_id}")])
+        
+    keyboard.append([InlineKeyboardButton("◀️ В админ-панель", callback_data='admin_panel')])
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+
+async def admin_claim_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    if user_id not in ADMIN_IDS:
+        return
+        
+    acc_id = int(query.data.split('_')[2])
+    acc = db.get_account_by_id(acc_id)
+    if not acc or acc.get('status') != 'available':
+        await query.edit_message_text("❌ Аккаунт уже недоступен.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data='admin_panel')]]))
+        return
+        
+    db.mark_sold(acc_id, user_id)
+    db.log_transaction(user_id, acc_id, 0)
+    
+    phone = acc.get('phone_number') or ''
+    text = (
+        f"✅ <b>Аккаунт успешно выдан вам!</b>\n\n"
+        f"📱 Номер: <code>{phone}</code>\n\n"
+        f"Перейдите в «Мои покупки» в главном меню, чтобы получить SMS-код."
+    )
+    keyboard = [[InlineKeyboardButton("📦 Мои покупки", callback_data='my_purchases')],
+                [InlineKeyboardButton("🏠 Главное меню", callback_data='back_to_main')]]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
 
 async def manage_accounts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -200,7 +249,7 @@ async def receive_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
             mgr.clients[real_id] = mgr.clients.pop(temp_id)
         await update.message.reply_text(f"✅ Аккаунт {phone} успешно сохранен в базе! ID: {real_id}")
     else:
-        await update.message.reply_text("❌ Ошибка сохранения в БД. Проверьте логи Railway.")
+        await update.message.reply_text("❌ Ошибка сохранения в БД.")
         
     context.user_data.clear()
     return ConversationHandler.END
@@ -292,12 +341,20 @@ async def get_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
     account_id = int(query.data.split('_')[2])
     
     acc = db.get_account_by_id(account_id)
-    mgr = telegram_account_handler.account_manager
-    code_data = mgr.get_code(account_id) if mgr else None
+    phone = acc.get('phone_number') if acc else ''
     
-    phone = acc.get('phone_number') or '' if acc else ''
-    if code_data and code_data.get('code'):
-        code = code_data['code']
+    # Сначала проверяем базу (куда Telethon сохраняет пойманные коды)
+    code_record = db.get_captured_code(account_id)
+    code = code_record.get('code') if code_record else None
+    
+    # Если в базе нет, пробуем дернуть менеджер напрямую
+    if not code:
+        mgr = telegram_account_handler.account_manager
+        code_data = mgr.get_code(account_id) if mgr else None
+        if code_data and code_data.get('code'):
+            code = code_data['code']
+    
+    if code:
         text = (
             f"✅ <b>Ваш SMS-код найден!</b>\n\n"
             f"🔑 Код: <code>{code}</code>\n"
@@ -309,7 +366,7 @@ async def get_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = (
             f"⏳ <b>Ожидание входящего SMS-кода...</b>\n\n"
             f"1. Введите номер <code>{phone}</code> в клиент Telegram\n"
-            f"2. Нажмите кнопку «Обновить» ниже после отправки SMS"
+            f"2. Запросите код и нажмите кнопку «Обновить» ниже"
         )
         keyboard = [
             [InlineKeyboardButton("🔄 Обновить", callback_data=f"get_code_{account_id}")],
@@ -339,6 +396,8 @@ def main():
     app.add_handler(CommandHandler('start', start))
     app.add_handler(add_account_conv)
     app.add_handler(CallbackQueryHandler(admin_panel, pattern='^admin_panel$'))
+    app.add_handler(CallbackQueryHandler(admin_claim_list, pattern='^admin_claim_list$'))
+    app.add_handler(CallbackQueryHandler(admin_claim_account, pattern='^claim_acc_'))
     app.add_handler(CallbackQueryHandler(manage_accounts, pattern='^manage_accounts$'))
     app.add_handler(CallbackQueryHandler(delete_account, pattern='^delete_acc_'))
     app.add_handler(CallbackQueryHandler(stats, pattern='^stats$'))
