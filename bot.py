@@ -137,7 +137,6 @@ async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Введите корректный номер с плюсом (например +79001234567):")
         return ADMIN_ADD_PHONE
     
-    # Сохраняем данные в контекст
     context.user_data['add_phone'] = phone
     context.user_data['add_admin_id'] = update.message.from_user.id
     temp_id = abs(hash(phone)) % 1000000
@@ -221,7 +220,7 @@ async def catalog(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for acc in accounts[:10]:
         phone = acc.get('phone_number') or 'Без номера'
         country = acc.get('country') or 'N/A'
-        price = int(acc.get('price') or 0)
+        price = int(acc.get('price') or 1)
         acc_id = acc.get('id', 0)
         text += f"📱 {phone} | {country} | ⭐ {price} Stars\n"
         keyboard.append([InlineKeyboardButton(f"Купить ⭐ {price} Stars", callback_data=f"buy_{acc_id}")])
@@ -239,12 +238,16 @@ async def buy_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("❌ Извините, данный аккаунт уже продан.")
         return
 
+    price_val = int(acc.get('price') or 1)
+    if price_val <= 0:
+        price_val = 1
+
     phone = acc.get('phone_number') or 'без номера'
     title = f"Покупка аккаунта {phone}"
     description = f"Оплата аккаунта Telegram ({acc.get('country', '')})"
     payload = f"buy_account_{account_id}"
     currency = "XTR"
-    prices = [LabeledPrice("Цена", int(acc.get('price') or 0))]
+    prices = [LabeledPrice("Цена", price_val)]
 
     await context.bot.send_invoice(
         chat_id=query.message.chat_id,
