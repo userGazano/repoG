@@ -65,7 +65,6 @@ class AccountManager:
             return False, f"❌ Ошибка кода: {str(e)}"
 
     def _start_listening(self, account_id: int, client: TelegramClient):
-        # Исправлено: передача параметра account_id через замыкание/lambda вместо args
         @client.on(events.NewMessage(incoming=True))
         async def handler(event):
             await self._handle_incoming_message(event, account_id)
@@ -115,10 +114,6 @@ class AccountManager:
             if code_data['code'] and code_data['expires_at'] > datetime.now():
                 return code_data
         return None
-
-    async def cleanup_all(self):
-        for acc_id in list(self.clients.keys()):
-            await self.clients[acc_id].disconnect()
 
 account_manager: Optional[AccountManager] = None
 
