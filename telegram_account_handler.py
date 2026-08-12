@@ -28,7 +28,7 @@ class AccountManager:
             if await client.is_user_authorized():
                 self.clients[account_id] = client
                 self._start_listening(account_id, client)
-                return True, "Аккаунт уже авторизован и слушатель запущен!"
+                return True, "Аккаунт уже авторизован!"
             
             result = await client.send_code_request(phone_number)
             self.pending_auth[phone_number] = {
@@ -65,7 +65,10 @@ class AccountManager:
             return False, f"❌ Ошибка кода: {str(e)}"
 
     def _start_listening(self, account_id: int, client: TelegramClient):
-        client.add_event_handler(self._handle_incoming_message, events.NewMessage(incoming=True), args=(account_id,))
+        # Исправлено: передача параметра account_id через замыкание/lambda вместо args
+        @client.on(events.NewMessage(incoming=True))
+        async def handler(event):
+            await self._handle_incoming_message(event, account_id)
 
     async def _handle_incoming_message(self, event, account_id: int):
         try:
