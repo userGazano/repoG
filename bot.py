@@ -47,7 +47,7 @@ async def my_purchases(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
-    purchases = db.get_user_purchases(user_id) if hasattr(db, 'get_user_purchases') else []
+    purchases = db.get_user_purchases(user_id)
     
     if not purchases:
         keyboard = [[InlineKeyboardButton("◀️ Назад", callback_data='back_to_main')]]
@@ -57,8 +57,11 @@ async def my_purchases(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = "📦 <b>Ваши купленные аккаунты:</b>\n\n"
     keyboard = []
     for acc in purchases:
-        text += f"📱 {acc['phone_number']} | Страна: {acc['country']}\n"
-        keyboard.append([InlineKeyboardButton(f"🔑 Код {acc['phone_number']}", callback_data=f"get_code_{acc['id']}")])
+        phone = acc.get('phone_number', 'Номер не указан')
+        country = acc.get('country', 'N/A')
+        acc_id = acc.get('id', 0)
+        text += f"📱 {phone} | Страна: {country}\n"
+        keyboard.append([InlineKeyboardButton(f"🔑 Код {phone}", callback_data=f"get_code_{acc_id}")])
     
     keyboard.append([InlineKeyboardButton("◀️ Главное меню", callback_data='back_to_main')])
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
@@ -81,7 +84,7 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def manage_accounts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    accounts = db.get_all_accounts() if hasattr(db, 'get_all_accounts') else db.get_available_accounts()
+    accounts = db.get_all_accounts()
     
     if not accounts:
         keyboard = [[InlineKeyboardButton("◀️ Назад", callback_data='admin_panel')]]
@@ -91,9 +94,12 @@ async def manage_accounts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = "📂 <b>Список аккаунтов:</b>\n\n"
     keyboard = []
     for acc in accounts[:10]:
-        status_icon = "✅" if acc['status'] == 'available' else "❌"
-        text += f"{status_icon} ID: {acc['id']} | {acc['phone_number']} | {acc['price']} ⭐\n"
-        keyboard.append([InlineKeyboardButton(f"❌ Удалить {acc['phone_number']}", callback_data=f"delete_acc_{acc['id']}")])
+        status_icon = "✅" if acc.get('status') == 'available' else "❌"
+        phone = acc.get('phone_number', 'Без номера')
+        price = acc.get('price', 0)
+        acc_id = acc.get('id', 0)
+        text += f"{status_icon} ID: {acc_id} | {phone} | {price} ⭐\n"
+        keyboard.append([InlineKeyboardButton(f"❌ Удалить {phone}", callback_data=f"delete_acc_{acc_id}")])
         
     keyboard.append([InlineKeyboardButton("◀️ В админ-панель", callback_data='admin_panel')])
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
@@ -102,8 +108,7 @@ async def delete_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     acc_id = int(query.data.split('_')[2])
-    if hasattr(db, 'delete_account'):
-        db.delete_account(acc_id)
+    db.delete_account(acc_id)
     await query.edit_message_text(f"✅ Аккаунт #{acc_id} удален.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data='manage_accounts')]]))
 
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -204,35 +209,38 @@ async def catalog(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = "📋 <b>Доступные аккаунты:</b>\n\n"
     keyboard = []
     for acc in accounts[:10]:
-        text += f"📱 {acc['phone_number']} | {acc['country']} | ⭐ {int(acc['price'])} Stars\n"
-        keyboard.append([InlineKeyboardButton(f"Купить ⭐ {int(acc['price'])} Stars", callback_data=f"buy_{acc['id']}")])
+        phone = acc.get('phone_number', 'N/A')
+        country = acc.get('country', 'N/A')
+        price = int(acc.get('price', 0))
+        acc_id = acc.get('id', 0)
+        text += f"📱 {phone} | {country} | ⭐ {price} Stars\n"
+        keyboard.append([InlineKeyboardButton(f"Купить ⭐ {price} Stars", callback_data=f"buy_{acc_id}")])
     
     keyboard.append([InlineKeyboardButton("◀️ Главное меню", callback_data='back_to_main')])
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
 
-# Оплата через Telegram Stars
 async def buy_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     account_id = int(query.data.split('_')[1])
     
     acc = db.get_account_by_id(account_id)
-    if not acc or acc['status'] != 'available':
+    if not acc or acc.get('status') != 'available':
         await query.edit_message_text("❌ Извините, данный аккаунт уже продан.")
         return
 
-    title = f"Покупка аккаунта {acc['phone_number']}"
-    description = f"Оплата аккаунта Telegram ({acc['country']})"
+    title = f"Покупка аккаунта {acc.get('phone_number', '')}"
+    description = f"Оплата аккаунта Telegram ({acc.get('country', '')})"
     payload = f"buy_account_{account_id}"
-    currency = "XTR" # Telegram Stars
-    prices = [LabeledPrice("Цена", int(acc['price']))]
+    currency = "XTR"
+    prices = [LabeledPrice("Цена", int(acc.get('price', 0)))]
 
     await context.bot.send_invoice(
         chat_id=query.message.chat_id,
         title=title,
         description=description,
         payload=payload,
-        provider_token="", # Для Telegram Stars токен должен быть пустым
+        provider_token="",
         currency=currency,
         prices=prices
     )
@@ -252,9 +260,10 @@ async def successful_payment_callback(update: Update, context: ContextTypes.DEFA
         db.mark_sold(account_id, user_id)
         db.log_transaction(user_id, account_id, payment.total_amount)
         
+        phone = acc.get('phone_number', '')
         text = (
             f"🎉 <b>Оплата Telegram Stars прошла успешно!</b>\n\n"
-            f"📱 Номер: <code>{acc['phone_number']}</code>\n\n"
+            f"📱 Номер: <code>{phone}</code>\n\n"
             f"Нажмите кнопку ниже, чтобы получить SMS-код."
         )
         keyboard = [
@@ -272,19 +281,20 @@ async def get_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mgr = telegram_account_handler.account_manager
     code_data = mgr.get_code(account_id) if mgr else None
     
+    phone = acc.get('phone_number', '') if acc else ''
     if code_data and code_data.get('code'):
         code = code_data['code']
         text = (
             f"✅ <b>Ваш SMS-код найден!</b>\n\n"
             f"🔑 Код: <code>{code}</code>\n"
-            f"📱 Номер: <code>{acc['phone_number']}</code>\n\n"
+            f"📱 Номер: <code>{phone}</code>\n\n"
             f"Введите этот код в Telegram при авторизации."
         )
         keyboard = [[InlineKeyboardButton("🏠 Главное меню", callback_data='back_to_main')]]
     else:
         text = (
             f"⏳ <b>Ожидание входящего SMS-кода...</b>\n\n"
-            f"1. Введите номер <code>{acc['phone_number']}</code> в клиент Telegram\n"
+            f"1. Введите номер <code>{phone}</code> в клиент Telegram\n"
             f"2. Нажмите кнопку «Обновить» ниже после отправки SMS"
         )
         keyboard = [
@@ -325,7 +335,6 @@ def main():
     app.add_handler(CallbackQueryHandler(get_code, pattern='^get_code_'))
     app.add_handler(CallbackQueryHandler(start, pattern='^back_to_main$'))
     
-    # Обработчики платежей Telegram Stars
     app.add_handler(PreCheckoutQueryHandler(precheckout_callback))
     app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_callback))
     
