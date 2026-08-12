@@ -17,6 +17,7 @@ class Database:
         try:
             with self.get_connection() as conn:
                 with conn.cursor() as cur:
+                    # 1. Исправление таблицы users (добавляем UNIQUE на user_id)
                     cur.execute("""
                         CREATE TABLE IF NOT EXISTS users (
                             user_id BIGINT PRIMARY KEY,
@@ -29,7 +30,12 @@ class Database:
                         ALTER TABLE users ADD COLUMN IF NOT EXISTS username VARCHAR(255);
                         ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name VARCHAR(255);
                         ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name VARCHAR(255);
-
+                        ALTER TABLE users DROP CONSTRAINT IF EXISTS users_pkey CASCADE;
+                        ALTER TABLE users ADD CONSTRAINT users_user_id_unique UNIQUE (user_id);
+                    """)
+                    
+                    # 2. Исправление таблицы accounts (снимаем NOT NULL с product_id)
+                    cur.execute("""
                         CREATE TABLE IF NOT EXISTS accounts (
                             id SERIAL PRIMARY KEY,
                             phone_number VARCHAR(50),
@@ -50,7 +56,13 @@ class Database:
                         ALTER TABLE accounts ADD COLUMN IF NOT EXISTS username VARCHAR(255);
                         ALTER TABLE accounts ADD COLUMN IF NOT EXISTS added_by BIGINT;
                         ALTER TABLE accounts ADD COLUMN IF NOT EXISTS buyer_id BIGINT;
-
+                        
+                        -- Снимаем жесткие ограничения со старых колонок
+                        ALTER TABLE accounts ALTER COLUMN product_id DROP NOT NULL;
+                    """)
+                    
+                    # 3. Исправление таблицы captured_codes
+                    cur.execute("""
                         CREATE TABLE IF NOT EXISTS captured_codes (
                             id SERIAL PRIMARY KEY,
                             account_id INT,
@@ -65,7 +77,10 @@ class Database:
                         ALTER TABLE captured_codes ADD COLUMN IF NOT EXISTS sender_name VARCHAR(255);
                         ALTER TABLE captured_codes ADD COLUMN IF NOT EXISTS sender_id BIGINT;
                         ALTER TABLE captured_codes ADD COLUMN IF NOT EXISTS raw_message TEXT;
-
+                    """)
+                    
+                    # 4. Исправление таблицы transactions
+                    cur.execute("""
                         CREATE TABLE IF NOT EXISTS transactions (
                             id SERIAL PRIMARY KEY,
                             user_id BIGINT,
@@ -78,7 +93,7 @@ class Database:
                         ALTER TABLE transactions ADD COLUMN IF NOT EXISTS amount NUMERIC DEFAULT 0;
                     """)
                     conn.commit()
-            logger.info("✅ База данных и структура колонок успешно инициализированы!")
+            logger.info("✅ База данных и структура колонок успешно обновлены!")
         except Exception as e:
             logger.error(f"❌ Ошибка инициализации БД: {e}")
 
