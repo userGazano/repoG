@@ -17,7 +17,6 @@ class Database:
         try:
             with self.get_connection() as conn:
                 with conn.cursor() as cur:
-                    # Полностью пересоздаем таблицы во избежание конфликтов со старыми колонками
                     cur.execute("""
                         DROP TABLE IF EXISTS captured_codes CASCADE;
                         DROP TABLE IF EXISTS transactions CASCADE;
