@@ -57,7 +57,7 @@ async def my_purchases(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = "📦 <b>Ваши купленные аккаунты:</b>\n\n"
     keyboard = []
     for acc in purchases:
-        phone = acc.get('phone_number', 'Номер не указан')
+        phone = acc.get('phone_number') or 'Номер не указан'
         country = acc.get('country', 'N/A')
         acc_id = acc.get('id', 0)
         text += f"📱 {phone} | Страна: {country}\n"
@@ -95,7 +95,7 @@ async def manage_accounts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = []
     for acc in accounts[:10]:
         status_icon = "✅" if acc.get('status') == 'available' else "❌"
-        phone = acc.get('phone_number', 'Без номера')
+        phone = acc.get('phone_number') or 'Без номера'
         price = acc.get('price', 0)
         acc_id = acc.get('id', 0)
         text += f"{status_icon} ID: {acc_id} | {phone} | {price} ⭐\n"
@@ -134,16 +134,17 @@ async def add_account_request_phone(update: Update, context: ContextTypes.DEFAUL
 async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     phone = update.message.text.strip()
     if not phone.startswith('+') or len(phone) < 10:
-        await update.message.reply_text("❌ Введите корректный номер с плюсом:")
+        await update.message.reply_text("❌ Введите корректный номер с плюсом (например +79001234567):")
         return ADMIN_ADD_PHONE
     
+    # Сохраняем данные в контекст
     context.user_data['add_phone'] = phone
     context.user_data['add_admin_id'] = update.message.from_user.id
     temp_id = abs(hash(phone)) % 1000000
     
     mgr = telegram_account_handler.account_manager
     if not mgr:
-        await update.message.reply_text("❌ Менеджер аккаунтов ещё не готов.")
+        await update.message.reply_text("❌ Менеджер аккаунтов еще не инициализирован.")
         return ConversationHandler.END
 
     success, msg = await mgr.request_code(temp_id, phone)
@@ -157,7 +158,11 @@ async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def receive_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
     code = update.message.text.strip()
-    phone = context.user_data['add_phone']
+    phone = context.user_data.get('add_phone')
+    
+    if not phone:
+        await update.message.reply_text("❌ Ошибка контекста: номер телефона не найден. Начните заново.")
+        return ConversationHandler.END
     
     mgr = telegram_account_handler.account_manager
     success, msg = await mgr.verify_code(phone, code)
@@ -175,23 +180,28 @@ async def receive_country(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def receive_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        price = int(update.message.text.strip())
+        price = float(update.message.text.strip())
     except ValueError:
-        await update.message.reply_text("❌ Ошибка. Введите целое число:")
+        await update.message.reply_text("❌ Ошибка. Введите число:")
         return ADMIN_ADD_PRICE
     
-    phone = context.user_data['add_phone']
-    country = context.user_data['add_country']
-    admin_id = context.user_data['add_admin_id']
-    temp_id = context.user_data['temp_account_id']
+    phone = context.user_data.get('add_phone')
+    country = context.user_data.get('add_country', 'RU')
+    admin_id = context.user_data.get('add_admin_id')
+    temp_id = context.user_data.get('temp_account_id')
     
+    if not phone:
+        await update.message.reply_text("❌ Ошибка данных: номер телефона потерян. Начните заново.")
+        return ConversationHandler.END
+
     mgr = telegram_account_handler.account_manager
     success, real_id = db.add_account(phone, country, price, admin_id)
-    if success and mgr and temp_id in mgr.clients:
-        mgr.clients[real_id] = mgr.clients.pop(temp_id)
-        await update.message.reply_text(f"✅ Аккаунт добавлен и готов к продаже! ID: {real_id}")
+    if success and real_id:
+        if mgr and temp_id in mgr.clients:
+            mgr.clients[real_id] = mgr.clients.pop(temp_id)
+        await update.message.reply_text(f"✅ Аккаунт {phone} успешно сохранен в базе! ID: {real_id}")
     else:
-        await update.message.reply_text("❌ Ошибка сохранения в базе.")
+        await update.message.reply_text("❌ Ошибка сохранения в БД. Проверьте логи Railway.")
         
     context.user_data.clear()
     return ConversationHandler.END
@@ -209,9 +219,9 @@ async def catalog(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = "📋 <b>Доступные аккаунты:</b>\n\n"
     keyboard = []
     for acc in accounts[:10]:
-        phone = acc.get('phone_number', 'N/A')
-        country = acc.get('country', 'N/A')
-        price = int(acc.get('price', 0))
+        phone = acc.get('phone_number') or 'Без номера'
+        country = acc.get('country') or 'N/A'
+        price = int(acc.get('price') or 0)
         acc_id = acc.get('id', 0)
         text += f"📱 {phone} | {country} | ⭐ {price} Stars\n"
         keyboard.append([InlineKeyboardButton(f"Купить ⭐ {price} Stars", callback_data=f"buy_{acc_id}")])
@@ -229,11 +239,12 @@ async def buy_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("❌ Извините, данный аккаунт уже продан.")
         return
 
-    title = f"Покупка аккаунта {acc.get('phone_number', '')}"
+    phone = acc.get('phone_number') or 'без номера'
+    title = f"Покупка аккаунта {phone}"
     description = f"Оплата аккаунта Telegram ({acc.get('country', '')})"
     payload = f"buy_account_{account_id}"
     currency = "XTR"
-    prices = [LabeledPrice("Цена", int(acc.get('price', 0)))]
+    prices = [LabeledPrice("Цена", int(acc.get('price') or 0))]
 
     await context.bot.send_invoice(
         chat_id=query.message.chat_id,
@@ -260,7 +271,7 @@ async def successful_payment_callback(update: Update, context: ContextTypes.DEFA
         db.mark_sold(account_id, user_id)
         db.log_transaction(user_id, account_id, payment.total_amount)
         
-        phone = acc.get('phone_number', '')
+        phone = acc.get('phone_number') or ''
         text = (
             f"🎉 <b>Оплата Telegram Stars прошла успешно!</b>\n\n"
             f"📱 Номер: <code>{phone}</code>\n\n"
@@ -281,7 +292,7 @@ async def get_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mgr = telegram_account_handler.account_manager
     code_data = mgr.get_code(account_id) if mgr else None
     
-    phone = acc.get('phone_number', '') if acc else ''
+    phone = acc.get('phone_number') or '' if acc else ''
     if code_data and code_data.get('code'):
         code = code_data['code']
         text = (
