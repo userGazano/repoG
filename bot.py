@@ -178,9 +178,12 @@ async def get_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
 
-async def main():
+def main():
     db.init_db()
-    await init_account_manager(db)
+    
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(init_account_manager(db))
     
     app = Application.builder().token(BOT_TOKEN).build()
     
@@ -193,6 +196,7 @@ async def main():
             ADMIN_ADD_PRICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_price)],
         },
         fallbacks=[],
+        per_message=False
     )
     
     app.add_handler(CommandHandler('start', start))
@@ -204,7 +208,7 @@ async def main():
     app.add_handler(CallbackQueryHandler(start, pattern='back_to_main'))
     
     logger.info("🚀 Бот запущен!")
-    await app.run_polling()
+    app.run_polling()
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    main()
