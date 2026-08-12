@@ -8,7 +8,7 @@ from telegram.ext import (
 
 from config import BOT_TOKEN, ADMIN_IDS
 from db import db
-from telegram_account_handler import init_account_manager, account_manager
+import telegram_account_handler
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -86,7 +86,12 @@ async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['add_admin_id'] = update.message.from_user.id
     temp_id = abs(hash(phone)) % 1000000
     
-    success, msg = await account_manager.request_code(temp_id, phone)
+    mgr = telegram_account_handler.account_manager
+    if not mgr:
+        await update.message.reply_text("❌ Менеджер аккаунтов ещё не готов. Попробуйте снова.")
+        return ConversationHandler.END
+
+    success, msg = await mgr.request_code(temp_id, phone)
     if success:
         context.user_data['temp_account_id'] = temp_id
         await update.message.reply_text("📝 <b>Шаг 2: Введите 5-значный SMS-код:</b>", parse_mode='HTML')
@@ -99,7 +104,8 @@ async def receive_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
     code = update.message.text.strip()
     phone = context.user_data['add_phone']
     
-    success, msg = await account_manager.verify_code(phone, code)
+    mgr = telegram_account_handler.account_manager
+    success, msg = await mgr.verify_code(phone, code)
     if success:
         await update.message.reply_text("🌍 <b>Шаг 3: Укажите страну (RU, US, EU):</b>", parse_mode='HTML')
         return ADMIN_ADD_COUNTRY
@@ -124,9 +130,10 @@ async def receive_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
     admin_id = context.user_data['add_admin_id']
     temp_id = context.user_data['temp_account_id']
     
+    mgr = telegram_account_handler.account_manager
     success, real_id = db.add_account(phone, country, price, admin_id)
-    if success and temp_id in account_manager.clients:
-        account_manager.clients[real_id] = account_manager.clients.pop(temp_id)
+    if success and mgr and temp_id in mgr.clients:
+        mgr.clients[real_id] = mgr.clients.pop(temp_id)
         await update.message.reply_text(f"✅ Аккаунт добавлен и слушает SMS! ID: {real_id}")
     else:
         await update.message.reply_text("❌ Ошибка сохранения в базе.")
@@ -183,7 +190,8 @@ async def get_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
     account_id = int(query.data.split('_')[2])
     
     acc = db.get_account_by_id(account_id)
-    code_data = account_manager.get_code(account_id)
+    mgr = telegram_account_handler.account_manager
+    code_data = mgr.get_code(account_id) if mgr else None
     
     if code_data and code_data.get('code'):
         code = code_data['code']
@@ -208,7 +216,7 @@ async def get_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def post_init(application: Application):
     db.init_db()
-    await init_account_manager(db)
+    await telegram_account_handler.init_account_manager(db)
 
 def main():
     app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
