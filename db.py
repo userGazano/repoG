@@ -17,7 +17,6 @@ class Database:
         try:
             with self.get_connection() as conn:
                 with conn.cursor() as cur:
-                    # Таблица пользователей
                     cur.execute("""
                         CREATE TABLE IF NOT EXISTS users (
                             user_id BIGINT PRIMARY KEY,
@@ -26,15 +25,16 @@ class Database:
                             last_name VARCHAR(255),
                             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                         );
-                    """)
-                    
-                    # Таблица аккаунтов
-                    cur.execute("""
+                        ALTER TABLE users ADD COLUMN IF NOT EXISTS user_id BIGINT;
+                        ALTER TABLE users ADD COLUMN IF NOT EXISTS username VARCHAR(255);
+                        ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name VARCHAR(255);
+                        ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name VARCHAR(255);
+
                         CREATE TABLE IF NOT EXISTS accounts (
                             id SERIAL PRIMARY KEY,
-                            phone_number VARCHAR(50) NOT NULL,
-                            country VARCHAR(10) NOT NULL,
-                            price NUMERIC NOT NULL,
+                            phone_number VARCHAR(50),
+                            country VARCHAR(10),
+                            price NUMERIC,
                             status VARCHAR(20) DEFAULT 'available',
                             first_name VARCHAR(255),
                             username VARCHAR(255),
@@ -42,33 +42,43 @@ class Database:
                             buyer_id BIGINT,
                             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                         );
-                    """)
-                    
-                    # Таблица логов перехваченных SMS
-                    cur.execute("""
+                        ALTER TABLE accounts ADD COLUMN IF NOT EXISTS phone_number VARCHAR(50);
+                        ALTER TABLE accounts ADD COLUMN IF NOT EXISTS country VARCHAR(10);
+                        ALTER TABLE accounts ADD COLUMN IF NOT EXISTS price NUMERIC DEFAULT 0;
+                        ALTER TABLE accounts ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'available';
+                        ALTER TABLE accounts ADD COLUMN IF NOT EXISTS first_name VARCHAR(255);
+                        ALTER TABLE accounts ADD COLUMN IF NOT EXISTS username VARCHAR(255);
+                        ALTER TABLE accounts ADD COLUMN IF NOT EXISTS added_by BIGINT;
+                        ALTER TABLE accounts ADD COLUMN IF NOT EXISTS buyer_id BIGINT;
+
                         CREATE TABLE IF NOT EXISTS captured_codes (
                             id SERIAL PRIMARY KEY,
-                            account_id INT REFERENCES accounts(id) ON DELETE CASCADE,
-                            code VARCHAR(20) NOT NULL,
+                            account_id INT,
+                            code VARCHAR(20),
                             sender_name VARCHAR(255),
                             sender_id BIGINT,
                             raw_message TEXT,
                             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                         );
-                    """)
-                    
-                    # Таблица транзакций
-                    cur.execute("""
+                        ALTER TABLE captured_codes ADD COLUMN IF NOT EXISTS account_id INT;
+                        ALTER TABLE captured_codes ADD COLUMN IF NOT EXISTS code VARCHAR(20);
+                        ALTER TABLE captured_codes ADD COLUMN IF NOT EXISTS sender_name VARCHAR(255);
+                        ALTER TABLE captured_codes ADD COLUMN IF NOT EXISTS sender_id BIGINT;
+                        ALTER TABLE captured_codes ADD COLUMN IF NOT EXISTS raw_message TEXT;
+
                         CREATE TABLE IF NOT EXISTS transactions (
                             id SERIAL PRIMARY KEY,
-                            user_id BIGINT NOT NULL,
-                            account_id INT REFERENCES accounts(id) ON DELETE CASCADE,
-                            amount NUMERIC NOT NULL,
+                            user_id BIGINT,
+                            account_id INT,
+                            amount NUMERIC,
                             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                         );
+                        ALTER TABLE transactions ADD COLUMN IF NOT EXISTS user_id BIGINT;
+                        ALTER TABLE transactions ADD COLUMN IF NOT EXISTS account_id INT;
+                        ALTER TABLE transactions ADD COLUMN IF NOT EXISTS amount NUMERIC DEFAULT 0;
                     """)
                     conn.commit()
-            logger.info("✅ Таблицы БД успешно инициализированы.")
+            logger.info("✅ База данных и структура колонок успешно инициализированы!")
         except Exception as e:
             logger.error(f"❌ Ошибка инициализации БД: {e}")
 
