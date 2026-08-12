@@ -2,7 +2,7 @@ import os
 import re
 import logging
 from telethon import TelegramClient, events
-from config import API_ID, API_HASH
+from config import TELEGRAM_API_ID, TELEGRAM_API_HASH
 
 logger = logging.getLogger(__name__)
 
