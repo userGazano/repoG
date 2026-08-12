@@ -98,19 +98,6 @@ class Database:
             logger.error(f"Ошибка сохранения аккаунта в БД: {e}")
             return False, None
 
-    def update_account_auth(self, account_id: int, phone_number: str, first_name: str, username: str):
-        try:
-            with self.get_connection() as conn:
-                with conn.cursor() as cur:
-                    cur.execute("""
-                        UPDATE accounts 
-                        SET phone_number = %s, first_name = %s, username = %s 
-                        WHERE id = %s;
-                    """, (phone_number, first_name, username, account_id))
-                    conn.commit()
-        except Exception as e:
-            logger.error(f"Ошибка обновления данных авторизации: {e}")
-
     def get_available_accounts(self):
         try:
             with self.get_connection() as conn:
@@ -186,18 +173,6 @@ class Database:
         except Exception as e:
             logger.error(f"Ошибка получения покупок пользователя: {e}")
             return []
-
-    def log_code_capture(self, account_id: int, code: str, sender_name: str, sender_id: int, raw_message: str):
-        try:
-            with self.get_connection() as conn:
-                with conn.cursor() as cur:
-                    cur.execute("""
-                        INSERT INTO captured_codes (account_id, code, sender_name, sender_id, raw_message)
-                        VALUES (%s, %s, %s, %s, %s);
-                    """, (account_id, code, sender_name, sender_id, raw_message))
-                    conn.commit()
-        except Exception as e:
-            logger.error(f"Ошибка записи SMS в БД: {e}")
 
     def get_captured_code(self, account_id: int):
         try:
