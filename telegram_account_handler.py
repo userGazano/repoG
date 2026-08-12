@@ -119,7 +119,7 @@ class AccountManager:
 
 account_manager: Optional[AccountManager] = None
 
-async def init_account_manager(db) -> AccountManager:
+async def init_account_manager(db_instance) -> AccountManager:
     global account_manager
-    account_manager = AccountManager(db)
+    account_manager = AccountManager(db_instance)
     return account_manager
